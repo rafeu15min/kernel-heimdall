@@ -1,7 +1,10 @@
 #![no_std]
 #![no_main]
 
+use core::fmt::Write;
 use core::panic::PanicInfo;
+
+mod vga_buffer;
 
 // Esta função é chamada se o Kernel sofrer um panic!
 #[panic_handler]
@@ -12,23 +15,69 @@ fn panic(_info: &PanicInfo) -> ! {
 // O ponto de entrada real invocado pelo bootloader
 #[unsafe(no_mangle)]
 pub extern "C" fn _start() -> ! {
-    // Endereço de memória física padronizado do buffer de texto VGA
-    let vga_buffer = 0xb8000 as *mut u8;
+    // Apenas UM motor é necessário
+    let mut motor_vga = vga_buffer::Writer {
+        column_position: 0,
+        row_position: 0,
+        color_code: vga_buffer::ColorCode::new(vga_buffer::Color::Yellow, vga_buffer::Color::Black),
+        buffer: unsafe { &mut *(0xb8000 as *mut vga_buffer::Buffer) },
+    };
 
-    // Nosso array de bytes estático (gravado direto no binário)
-    let mensagem = b"Ola, Engenheiro! O Kernel respira!";
-    let cor_verde = 0xa;
+    let cores_arco_iris = [
+        vga_buffer::Color::Blue,
+        vga_buffer::Color::Green,
+        vga_buffer::Color::Cyan,
+        vga_buffer::Color::Red,
+        vga_buffer::Color::Magenta,
+        vga_buffer::Color::Brown,
+        vga_buffer::Color::LightGray,
+        vga_buffer::Color::DarkGray,
+        vga_buffer::Color::LightBlue,
+        vga_buffer::Color::LightGreen,
+        vga_buffer::Color::LightCyan,
+        vga_buffer::Color::LightRed,
+        vga_buffer::Color::Pink,
+        vga_buffer::Color::Yellow,
+        vga_buffer::Color::White,
+    ];
 
-    // Iteramos sobre a mensagem pegando o índice (i) e a letra (byte)
-    for (i, &byte) in mensagem.iter().enumerate() {
-        unsafe {
-            // A matemática do VGA: cada caractere ocupa 2 bytes (Letra + Cor)
-            // offset(0) = Letra 1 | offset(1) = Cor 1
-            // offset(2) = Letra 2 | offset(3) = Cor 2
-            *vga_buffer.offset(i as isize * 2) = byte;
-            *vga_buffer.offset(i as isize * 2 + 1) = cor_verde;
+    let mut indice_cor = 0;
+
+    loop {
+        // Rebobina o cursor a cada ciclo de animação
+        motor_vga.column_position = 0;
+        motor_vga.row_position = 0;
+
+        // 1. Configura para Amarelo e escreve o prefixo (com espaço no final)
+        motor_vga.color_code =
+            vga_buffer::ColorCode::new(vga_buffer::Color::Yellow, vga_buffer::Color::Black);
+        let _ = write!(motor_vga, "O Motor do seu ");
+
+        // 2. Troca a cor do mesmo motor para a cor atual do arco-íris e escreve "Kernel"
+        motor_vga.color_code =
+            vga_buffer::ColorCode::new(cores_arco_iris[indice_cor], vga_buffer::Color::Black);
+        let _ = write!(motor_vga, "Kernel");
+
+        // 3. Volta imediatamente para Amarelo e finaliza a linha (com espaço no começo)
+        motor_vga.color_code =
+            vga_buffer::ColorCode::new(vga_buffer::Color::Yellow, vga_buffer::Color::Black);
+        let _ = write!(motor_vga, " respira.\n");
+
+        // Continua imprimindo o resto normalmente em Amarelo
+        let _ = write!(motor_vga, "Iniciando subsistemas...\n");
+        let _ = write!(motor_vga, "Quantidade de nucleos encontrados: {}\n", 8);
+        let _ = write!(
+            motor_vga,
+            "Memoria RAM fisica enderecada: {} Gigabytes\n",
+            32
+        );
+
+        // O delay (Busy Wait)
+        for _ in 0..100_000 {
+            core::hint::spin_loop();
         }
-    }
 
-    loop {} // Mantém a CPU ligada e o Kernel rodando
+        // Avança a cor
+        indice_cor = (indice_cor + 1) % cores_arco_iris.len();
+    }
 }
