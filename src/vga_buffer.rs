@@ -1,4 +1,7 @@
 use core::fmt;
+use core::fmt::Write;
+use lazy_static::lazy_static;
+use spin::Mutex;
 use volatile::Volatile;
 
 // O hardware VGA suporta essas 16 cores básicas.
@@ -117,4 +120,36 @@ impl fmt::Write for Writer {
         self.write_string(s);
         Ok(())
     }
+}
+
+// 1. O ESCRITOR GLOBAL SEGURO
+lazy_static! {
+    // WRITER é uma variável global, estática, protegida contra colisões de múltiplos núcleos.
+    pub static ref WRITER: Mutex<Writer> = Mutex::new(Writer {
+        column_position: 0,
+        row_position: 0,
+        color_code: ColorCode::new(Color::Yellow, Color::Black),
+        buffer: unsafe { &mut *(0xb8000 as *mut Buffer) },
+    });
+}
+
+// 2. A FUNÇÃO PONTE
+// As macros não conseguem chamar os métodos diretamente de forma elegante,
+// então criamos essa função escondida que trava o Mutex e escreve a string formatada.
+#[doc(hidden)]
+pub fn _print(args: fmt::Arguments) {
+    // Usamos o lock() para garantir exclusividade na memória de vídeo
+    WRITER.lock().write_fmt(args).unwrap();
+}
+
+// 3. RECRIANDO AS MACROS NATIVAS
+#[macro_export]
+macro_rules! print {
+    ($($arg:tt)*) => ($crate::vga_buffer::_print(format_args!($($arg)*)));
+}
+
+#[macro_export]
+macro_rules! println {
+    () => ($crate::print!("\n"));
+    ($($arg:tt)*) => ($crate::print!("{}\n", format_args!($($arg)*)));
 }
