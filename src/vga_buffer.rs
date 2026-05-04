@@ -142,14 +142,39 @@ pub fn _print(args: fmt::Arguments) {
     WRITER.lock().write_fmt(args).unwrap();
 }
 
-// 3. RECRIANDO AS MACROS NATIVAS
+#[doc(hidden)]
+pub fn _print_with_color(foreground: Color, args: fmt::Arguments) {
+    // Travamos o Mutex para garantir que nenhum outro núcleo do processador interrompa a pintura
+    let mut writer = WRITER.lock();
+
+    // Salva a cor antiga
+    let old_color = writer.color_code;
+
+    // Aplica a nova cor de letra (mantendo o fundo preto)
+    writer.color_code = ColorCode::new(foreground, Color::Black);
+
+    // Escreve o texto
+    writer.write_fmt(args).unwrap();
+
+    // Restaura a cor antiga imediatamente após escrever!
+    writer.color_code = old_color;
+}
+
 #[macro_export]
 macro_rules! print {
+    // Nova regra: se começar com 'fg: Cor', chama a função colorida
+    (fg: $color:expr, $($arg:tt)*) => {
+        $crate::vga_buffer::_print_with_color($color, format_args!($($arg)*));
+    };
+    // Regra padrão: continua funcionando como antes
     ($($arg:tt)*) => ($crate::vga_buffer::_print(format_args!($($arg)*)));
 }
 
 #[macro_export]
 macro_rules! println {
     () => ($crate::print!("\n"));
+    // Nova regra com cor (repassa para o print! colorido e adiciona a quebra de linha)
+    (fg: $color:expr, $($arg:tt)*) => ($crate::print!(fg: $color, "{}\n", format_args!($($arg)*)));
+    // Regra padrão
     ($($arg:tt)*) => ($crate::print!("{}\n", format_args!($($arg)*)));
 }
