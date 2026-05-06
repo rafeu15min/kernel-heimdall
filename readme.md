@@ -5,11 +5,13 @@
 ## 🗺️ Roadmap de Construção
  
 ### 1. O Despertar no Silício *(Preparando o Ambiente Bare-Metal)*
-- A remoção das rodinhas de treinamento: Entendendo o `#![no_std]` e o `#![no_main]`.
-- Por que o Rust normal não roda no hardware vazio?
-- Definindo o alvo: A arquitetura `x86_64-unknown-none`.
-- O Bootloader: A mágica invisível que nos tira dos 16-bits (MS-DOS) e nos entrega o controle em 64-bits.
-- *Visuais previstos:* Diagrama de blocos da sequência de boot (BIOS/UEFI → Bootloader → Kernel).
+- **1.1** O Ambiente Freestanding *(O Vazio)* — O que é o bare-metal e por que ele exige uma abordagem radicalmente diferente.
+- **1.2** `#![no_std]` — Cortando o Cordão Umbilical — Desativando a `std` e entendendo a perda do `panic_handler`.
+- **1.3** `#![no_main]` — Redefinindo o Ponto de Partida — Eliminando o `crt0` e construindo o `_start`, o verdadeiro ponto de entrada do Kernel.
+- **1.4** Por que o Rust Normal Não Roda no Hardware Vazio? — O caminho oculto do `println!`, a ausência do Heap e a dependência de threads.
+- **1.5** Definindo o Alvo: `x86_64-unknown-none` — Compilação cruzada, desmembrando o Target Triple e desligando o PIC via `config.toml`.
+- **1.6** O Bootloader — A mágica que transita a CPU do Real Mode (16-bits) ao Long Mode (64-bits) e entrega o controle ao `_start`.
+- **1.7** *Visual:* Diagrama da sequência de boot (BIOS/UEFI → Bootloader → Kernel Heimdall).
 ### 2. A Primeira Luz *(Construindo o Driver de Vídeo VGA)*
 - O mapa do tesouro: Mapeando o endereço de hardware `0xb8000`.
 - Anatomia de um caractere na tela: Estruturas `ScreenChar` e manipulação de bits (`<< 4`) para cores.
