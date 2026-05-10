@@ -1,4 +1,5 @@
 use crate::{gdt, println}; // Importe o gdt aqui!
+use core::sync::atomic::{AtomicU8, Ordering};
 use lazy_static::lazy_static;
 use pc_keyboard::{DecodedKey, HandleControl, Keyboard, ScancodeSet1, layouts};
 use pic8259::ChainedPics;
@@ -7,6 +8,9 @@ use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame};
 
 pub const PIC_1_OFFSET: u8 = 32;
 pub const PIC_2_OFFSET: u8 = PIC_1_OFFSET + 8;
+
+// Começamos no 1 (Azul) para pular o 0 (Preto, senão a palavra some)
+static COLOR_TICK: AtomicU8 = AtomicU8::new(1);
 
 pub static PICS: Mutex<ChainedPics> =
     Mutex::new(unsafe { ChainedPics::new(PIC_1_OFFSET, PIC_2_OFFSET) });
@@ -79,12 +83,18 @@ extern "x86-interrupt" fn double_fault_handler(
     loop {}
 }
 
-// --- TRATADOR DO RELÓGIO (Timer) ---
 extern "x86-interrupt" fn timer_interrupt_handler(_stack_frame: InterruptStackFrame) {
-    // Imprime um ponto a cada tique do relógio
-    crate::print!(".");
+    // 1. Pega o número da cor atual e soma 1 atomicamente
+    let tick = COLOR_TICK.fetch_add(1, Ordering::Relaxed);
 
-    // Regra de Ouro: Avisa o PIC que terminamos de processar
+    // 2. Fazemos uma matemática simples com resto da divisão (módulo % 15).
+    // Isso garante que a cor sempre vai girar entre 1 (Azul) e 15 (Branco).
+    let next_color = (tick % 15) + 1;
+
+    // 3. Chamamos o nosso pincel cirúrgico lá no VGA
+    crate::vga_buffer::rgb_heimdall_effect(next_color);
+
+    // 4. Regra de Ouro: Avisa o PIC
     unsafe {
         PICS.lock()
             .notify_end_of_interrupt(InterruptIndex::Timer.as_u8());

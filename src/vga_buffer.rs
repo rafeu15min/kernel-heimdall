@@ -90,6 +90,23 @@ impl Writer {
         }
     }
 
+    // Adicione isso DENTRO do `impl Writer`
+    pub fn change_color_at(&mut self, row: usize, col_start: usize, len: usize, color: Color) {
+        let color_code = ColorCode::new(color, Color::Black);
+
+        for i in 0..len {
+            let col = col_start + i;
+            if col < BUFFER_WIDTH {
+                // Lemos o caractere atual da tela
+                let mut screen_char = self.buffer.chars[row][col].read();
+                // Trocamos apenas a cor dele
+                screen_char.color_code = color_code;
+                // Escrevemos de volta no hardware
+                self.buffer.chars[row][col].write(screen_char);
+            }
+        }
+    }
+
     // A função simplificada de pular linha (Para a versão 1, ela apenas zera a coluna)
     // No futuro, implementaremos a rolagem da tela (scroll) aqui.
     fn new_line(&mut self) {
@@ -177,4 +194,14 @@ macro_rules! println {
     (fg: $color:expr, $($arg:tt)*) => ($crate::print!(fg: $color, "{}\n", format_args!($($arg)*)));
     // Regra padrão
     ($($arg:tt)*) => ($crate::print!("{}\n", format_args!($($arg)*)));
+}
+
+// Adicione isso no final do arquivo vga_buffer.rs
+pub fn rgb_heimdall_effect(color_value: u8) {
+    // Transmuta o número (0 a 15) direto para o Enum Color.
+    // Como definimos o Color com #[repr(u8)], isso é matematicamente seguro!
+    let color: Color = unsafe { core::mem::transmute(color_value) };
+
+    // A palavra Heimdall está na Linha 0, começa na Coluna 23, e tem 8 letras.
+    WRITER.lock().change_color_at(0, 23, 8, color);
 }
