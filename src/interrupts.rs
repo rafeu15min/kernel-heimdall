@@ -1,7 +1,7 @@
 use crate::{gdt, println}; // Importe o gdt aqui!
 use core::sync::atomic::{AtomicU8, Ordering};
 use lazy_static::lazy_static;
-use pc_keyboard::{DecodedKey, HandleControl, Keyboard, ScancodeSet1, layouts};
+use pc_keyboard::{DecodedKey, HandleControl, KeyCode, Keyboard, ScancodeSet1, layouts};
 use pic8259::ChainedPics;
 use spin::Mutex;
 use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame};
@@ -113,10 +113,33 @@ extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: InterruptStac
 
     // Passamos o pulso elétrico para a máquina de estado traduzir para ASCII
     if let Ok(Some(key_event)) = keyboard.add_byte(scancode) {
-        if let Some(key) = keyboard.process_keyevent(key_event) {
-            match key {
-                DecodedKey::Unicode(character) => crate::print!("{}", character),
-                DecodedKey::RawKey(key) => crate::print!("{:?}", key),
+        // Passamos o pulso elétrico para a máquina de estado traduzir
+        if let Ok(Some(key_event)) = keyboard.add_byte(scancode) {
+            if let Some(key) = keyboard.process_keyevent(key_event) {
+                match key {
+                    // Se for um caractere imprimível
+                    DecodedKey::Unicode(character) => match character {
+                        // O Backspace no padrão ASCII é o código hexadecimal \x08
+                        '\x08' => crate::vga_buffer::WRITER.lock().backspace(),
+
+                        // Qualquer outra letra, imprimimos normalmente
+                        _ => crate::print!("{}", character),
+                    },
+
+                    // Se for uma tecla de controle (RawKey)
+                    DecodedKey::RawKey(key) => {
+                        let mut writer = crate::vga_buffer::WRITER.lock();
+                        match key {
+                            KeyCode::ArrowLeft => writer.move_cursor_left(),
+                            KeyCode::ArrowRight => writer.move_cursor_right(),
+
+                            // O GRANDE TRUQUE: O underscore '_' captura todo o resto.
+                            // Shifts, Controls, CapsLock, F1, Esc...
+                            // Ao usar um bloco vazio {}, nós silenciamos essas teclas!
+                            _ => {}
+                        }
+                    }
+                }
             }
         }
     }

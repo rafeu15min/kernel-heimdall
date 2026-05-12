@@ -3,6 +3,7 @@ use core::fmt::Write;
 use lazy_static::lazy_static;
 use spin::Mutex;
 use volatile::Volatile;
+use x86_64::instructions::port::Port;
 
 // O hardware VGA suporta essas 16 cores básicas.
 // #[repr(u8)] garante que cada cor ocupe exatamente 1 byte (8 bits) na memória.
@@ -86,6 +87,9 @@ impl Writer {
                     color_code,
                 });
                 self.column_position += 1;
+
+                // ADICIONE ESTA LINHA: Para o cursor piscar na próxima casa vazia!
+                self.update_hardware_cursor(self.row_position, self.column_position);
             }
         }
     }
@@ -106,7 +110,60 @@ impl Writer {
             }
         }
     }
+    // 1. Comunica-se com a placa de vídeo para mover o tracinho piscante
+    fn update_hardware_cursor(&self, row: usize, col: usize) {
+        let pos = (row * BUFFER_WIDTH + col) as u16;
+        unsafe {
+            // A porta 0x3D4 recebe o comando (14 para byte alto, 15 para byte baixo)
+            // A porta 0x3D5 recebe o dado real da posição
+            let mut port_3d4 = Port::new(0x3D4);
+            let mut port_3d5 = Port::new(0x3D5);
 
+            port_3d4.write(0x0Fu8);
+            port_3d5.write((pos & 0xFF) as u8);
+
+            port_3d4.write(0x0Eu8);
+            port_3d5.write(((pos >> 8) & 0xFF) as u8);
+        }
+    }
+
+    // 2. A mecânica do Backspace
+    pub fn backspace(&mut self) {
+        if self.column_position > 0 {
+            // Volta uma casa
+            self.column_position -= 1;
+
+            // Cria um caractere vazio (espaço) com a cor atual
+            let blank = ScreenChar {
+                ascii_character: b' ',
+                color_code: self.color_code,
+            };
+
+            // Usamos a linha ATUAL (self.row_position) para apagar
+            let row = self.row_position;
+            let col = self.column_position;
+
+            self.buffer.chars[row][col].write(blank);
+            self.update_hardware_cursor(row, col);
+        }
+    }
+
+    // 3. A mecânica das Setinhas (Navegação Esquerda/Direita)
+    // Nota: Em um terminal simples, escrevemos sempre na última linha.
+    // Setas para cima/baixo exigiriam histórico de comandos, então faremos a navegação lateral.
+    pub fn move_cursor_left(&mut self) {
+        if self.column_position > 0 {
+            self.column_position -= 1;
+            self.update_hardware_cursor(self.row_position, self.column_position);
+        }
+    }
+
+    pub fn move_cursor_right(&mut self) {
+        if self.column_position < BUFFER_WIDTH - 1 {
+            self.column_position += 1;
+            self.update_hardware_cursor(self.row_position, self.column_position);
+        }
+    }
     // A função simplificada de pular linha (Para a versão 1, ela apenas zera a coluna)
     // No futuro, implementaremos a rolagem da tela (scroll) aqui.
     fn new_line(&mut self) {
@@ -148,6 +205,25 @@ lazy_static! {
         color_code: ColorCode::new(Color::Yellow, Color::Black),
         buffer: unsafe { &mut *(0xb8000 as *mut Buffer) },
     });
+}
+
+// Modela o cursor de hardware para parecer um "underline" ( _ )
+pub fn init_cursor() {
+    use x86_64::instructions::port::Port;
+    unsafe {
+        let mut port_3d4 = Port::new(0x3D4);
+        let mut port_3d5 = Port::new(0x3D5);
+
+        // Registrador 0x0A: Define a linha de pixel de INÍCIO do cursor
+        port_3d4.write(0x0Au8);
+        let start: u8 = port_3d5.read();
+        port_3d5.write((start & 0xC0) | 14); // Começa na linha de pixel 14
+
+        // Registrador 0x0B: Define a linha de pixel de FIM do cursor
+        port_3d4.write(0x0Bu8);
+        let end: u8 = port_3d5.read();
+        port_3d5.write((end & 0xE0) | 15); // Termina na linha de pixel 15
+    }
 }
 
 // 2. A FUNÇÃO PONTE
